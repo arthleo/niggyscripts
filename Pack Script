@@ -1,0 +1,115 @@
+@nightyScript(
+    name="Pack Script",
+    author="Polak",
+    description="Sends random humorous quotes to the mentioned user.",
+    usage="pack <User> <loop_count>"
+)
+def packer():
+    os.makedirs(f'{getScriptsPath()}/scriptData', exist_ok=True)
+    script_config_path = f"{getScriptsPath()}/scriptData/packScript.json"
+    
+    def updateSetting(key, value):
+        json.dump({**(json.load(open(script_config_path, 'r', encoding="utf-8", errors="ignore")) if os.path.exists(script_config_path) else {}), key: value}, open(script_config_path, 'w', encoding="utf-8", errors="ignore"), indent=2)
+
+    def getMessageSetting(key=None):
+        if not os.path.exists(script_config_path):
+            return {} if key is None else []
+        with open(script_config_path, 'r', encoding="utf-8", errors="ignore") as f:
+            settings = json.load(f)
+        return settings if key is None else settings.get(key, [])
+    
+    def removeMessageSetting(key):
+        settings = getMessageSetting()
+        if key in settings.get("messages"):
+            settings["messages"].remove(key)
+            with open(script_config_path, 'w', encoding="utf-8", errors="ignore") as f:
+                json.dump(settings, f, indent=2)
+
+    def insertMessageEntry(message, extras={}):
+        ap_entries_table.insert_rows([{
+            "id": str(uuid.uuid4()),
+            "cells": [
+                {
+                    "text": message
+                },
+                extras
+            ]
+        }])
+
+    def getMessageRowEntry(row_id):
+        return next((entry for entry in ap_entries_table.rows if entry["id"] == row_id), None)
+
+    def deleteMessageEntry(row_id):
+        row = getMessageRowEntry(row_id)
+        extras = row['cells'][-1]
+        if "message" in extras:
+            removeMessageSetting(extras["message"])
+            ap_entries_table.delete_rows([row_id])
+            ap_tab.toast(type="INFO", title="Message Deleted", description=f"Deleted: {extras['message']}")
+
+    def addMessageEntry():
+        if ap_message_input.value:
+            messages = getMessageSetting("messages") or []
+            messages.append(ap_message_input.value)
+            updateSetting("messages", messages)
+            insertMessageEntry(ap_message_input.value, {"message": ap_message_input.value})
+            ap_tab.toast(type="SUCCESS", title="Message Added", description=f"Added: {ap_message_input.value}")
+        else:
+            ap_tab.toast(type="ERROR", title="Empty Message", description="Please enter a message first.")
+
+    ap_tab = Tab(name='Pack Script', title="Pack Script", icon="fire")
+    ap_container = ap_tab.create_container(type="rows")
+    ap_card = ap_container.create_card(height="full", width="full", gap=3)
+    ap_card.create_ui_element(UI.Text,
+        content=f"This tab is simply used to configure the pack script. To use the script, use {bot.command_prefix}pack @member amount",
+        size="base",
+        weight="bold",
+        color="#FFFFFF",
+        align="left"
+    )
+    ap_entry_group = ap_card.create_group(type="columns", gap=3, full_width=True)
+    ap_message_input = ap_entry_group.create_ui_element(UI.Input, label="Message", show_clear_button=True, full_width=True, required=True)
+    ap_entry_group.create_ui_element(
+        UI.Button,
+        label="Add",
+        onClick=addMessageEntry
+    )
+
+    ap_entries_table = ap_card.create_ui_element(UI.Table, selectable=False, search=True, items_per_page=6, columns=[
+            { "type": "text", "label": "Messages" },
+            { "type": "button", "label": "Actions", "buttons": [
+                { "label": "Delete", "color": "danger", "onClick": deleteMessageEntry },
+            ] },
+        ],
+        rows=[]
+    )
+
+    settings = getMessageSetting("messages")
+    for message in settings:
+        insertMessageEntry(message, {"message": message})
+
+
+    @bot.command(description="Sends random humorous quotes to the mentioned user.")
+    async def pack(ctx, member: discord.User = None, loop_count: int = 1):
+        await ctx.message.delete()
+
+        if member is None:
+            await ctx.send(f'**Invalid**: Please mention a user and a loop count!')
+            return
+
+        # quotes = [
+        #     "You're a true meme master!", # add here your friendly msgs ;)
+        #     "I bet you're the fastest in Mario Kart!",
+        #     "You have the coolest avatar I've ever seen.",
+        #     "Best dancer on Discord!",
+        #     "I hope you're having the best day today!",
+        #     "You're the real champion here!",
+        #     "More energy than a cup of coffee!"
+        # ]
+        quotes = getMessageSetting("messages")
+
+        for _ in range(loop_count):
+            await ctx.send(f'{member.mention} {random.choice(quotes)}')
+
+    ap_tab.render()
+packer()
